@@ -73,8 +73,8 @@ def main():
     if not os.path.exists(TEST_DATA_PATH):
         os.mkdir(TEST_DATA_PATH)
 
-    parse_raw_data(RAW_TRAIN_DATA_PATH, TRAIN_DATA_PATH)
-    parse_raw_data(RAW_TEST_DATA_PATH, TEST_DATA_PATH)
+    parse_raw_data(RAW_TRAIN_DATA_PATH, TRAIN_DATA_PATH, min_delay=0, max_delay=1e6)
+    parse_raw_data(RAW_TEST_DATA_PATH, TEST_DATA_PATH, min_delay=0, max_delay=1e6)
 
     print("Data was preprocessed successfully.")
 
