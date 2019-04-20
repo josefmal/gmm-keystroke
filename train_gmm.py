@@ -6,107 +6,197 @@ TRAIN_DATA_PATH = "processed_data/train/"
 TEST_DATA_PATH = "processed_data/test/"
 
 
-def read_processed_data(path, user_id, M=0):
-    """
-    Reads the processed data (train or test) for one user and returns
-    the digraph as a dictionary, where each entry has the form:
+class GMMKeystrokeModel(object):
 
-    "wo" : (124, 75, 242, ...)
+    def __init__(self, users, M, delta, S_thresh):
 
-    """
+        """
+        Initializes the model.
 
-    file_name = path + user_id + ".txt"
-    digraph_dict = {}
-    with open(file_name, "r") as file:
-        for line in file:
-            keys, delay = line.split()
-            if keys in digraph_dict.keys():
-                digraph_dict[keys] = np.append(digraph_dict[keys], float(delay))
-            else:
-                digraph_dict[keys] = np.array(float(delay))
+        users = List of user ids in the system
+        M = Number of components in each GMM
+        delta = Similarity tolerance parameter
+        S_thresh = Threshold for evaluating
 
-    # Delete any entries with less than M samples
-    for key, entry in list(digraph_dict.items()):
-        if entry.shape == ():
-            del digraph_dict[key]
-        elif entry.shape[0] < M:
-            del digraph_dict[key]
-        elif len(set(entry)) < M:
-            del digraph_dict[key]
+        """
+        self.users = users
+        self.M = M
+        self.delta = delta
+        self.S_thresh = S_thresh
 
-    return digraph_dict
+        self.all_users_digraphs_train = [None for user in self.users]
+        self.all_users_digraphs_test = [None for user in self.users]
 
+        self.all_users_digraphs_gmms = [None for user in self.users]
 
-def fit_gmm(digraph_delays, M):
-    """
-    Fits a GMM to the set of delays for one digraph.
-    """
-    gmm = sklearn.mixture.GaussianMixture(n_components=M)
-    gmm.fit(digraph_delays.reshape(-1, 1))
+    def get_train_data(self, path):
 
-    return gmm
+        """
+        Reads all the training data as a list of dictionaries (one per user).
+        """
+        for i, user in enumerate(self.users):
+            digraph_dict = self.__get_processed_data(path, user)
+            self.all_users_digraphs_train[i] = digraph_dict
 
+    def get_test_data(self, path):
 
-def compute_similarites(user_digraphs, user_gmm_params, M, delta):
-    """
-    Computes similarity metric using the "Digraph similarity algorithm"
-    """
-    s = []
+        """
+        Reads all the test data as a list of dictionaries (one per user).
+        """
+        for i, user in enumerate(self.users):
+            digraph_dict = self.__get_processed_data(path, user, keep_small=False)
+            self.all_users_digraphs_test[i] = digraph_dict
 
-    for i in range(M):
+    def fit(self):
 
-        count = 0
+        """
+        Fits GMMs to the training data.
+        """
 
-        for keys, delays in user_digraphs.items():
+        if self.all_users_digraphs_train[0] is None:
+            raise ValueError("No training data loaded. Load training data with get_train_data(self, path).")
 
-            for delay in delays:
+        for i, user in enumerate(self.users):
 
-                if keys not in user_gmm_params.keys():
-                    continue
+            user_digraphs = self.all_users_digraphs_train[i]
 
-                means, covars, weights = user_gmm_params[keys]
-                mean = np.asscalar(means[i])
-                covar = np.asscalar(covars[i])
+            self.all_users_digraphs_gmms[i] = {}
+            for digraph in user_digraphs.keys():
 
-                if delay > mean - delta*np.sqrt(covar) and delay < mean + delta*np.sqrt(covar):
-                    count += 1
+                delays = user_digraphs[digraph]
+                gmm = sklearn.mixture.GaussianMixture(n_components=self.M)
+                gmm.fit(delays.reshape(-1, 1))
 
-        s.append(count*weights[i])
+                self.all_users_digraphs_gmms[i][digraph] = (gmm.means_, gmm.covariances_, gmm.weights_)
 
-    return s
+    def predict(self, S_thresh=None):
+
+        """
+        Predicts on the test data (i.e. tries to authenticate every user with every other user
+        by presenting the test data).
+
+        Returns the FAR and FRR.
+
+        """
+        tot_tests = 0
+        FA_errors = 0
+        FR_errors = 0
+
+        if S_thresh is None:
+            S_thresh = self.S_thresh
+
+        for query_user_id in self.users:
+            for claimed_user_id in self.users:
+
+                S = self.__compute_similarites(query_user_id, claimed_user_id)
+
+                for j in range(len(S)):
+
+                    if S[j] >= S_thresh:
+                        if query_user_id != claimed_user_id:
+                            FA_errors += 1
+                    else:
+                        if query_user_id == claimed_user_id:
+                            FR_errors += 1
+
+                tot_tests += 1
+
+        FAR = float(FA_errors)/tot_tests
+        FRR = float(FR_errors)/tot_tests
+
+        return FAR, FRR
+
+    def __get_processed_data(self, path, user_id, keep_small=False):
+
+        """
+        Reads preprocessed data of user with user_id from path.
+        Returns the digraph as a dictionary, in which each entry has the form:
+
+        "wo" : (124, 75, 242, ...)
+
+        If keep_small is False, any digraph with less than M samples is discarded.
+
+        """
+
+        file_name = path + user_id + ".txt"
+        digraph_dict = {}
+        with open(file_name, "r") as file:
+            for line in file:
+                keys, delay = line.split()
+                if keys in digraph_dict.keys():
+                    digraph_dict[keys] = np.append(digraph_dict[keys], float(delay))
+                else:
+                    digraph_dict[keys] = np.array(float(delay))
+
+        if not keep_small:
+
+            for key, entry in list(digraph_dict.items()):
+                if entry.shape == ():
+                    del digraph_dict[key]
+                elif entry.shape[0] < self.M:
+                    del digraph_dict[key]
+                elif len(set(entry)) < self.M:
+                    del digraph_dict[key]
+
+        return digraph_dict
+
+    def __compute_similarites(self, query_user_id, claimed_user_id):
+        """
+        Computes similarity between query_user and claimed_user
+        using the "Digraph similarity algorithm" (Alg. 1 in paper).
+
+        Returns list of similarities.
+        """
+
+        S = []
+
+        query_ind = self.users.index(query_user_id)
+        query_digraph = self.all_users_digraphs_test[query_ind]
+
+        claimed_ind = self.users.index(claimed_user_id)
+        claimed_gmm_params = self.all_users_digraphs_gmms[claimed_ind]
+
+        for i in range(self.M):
+            count = 0
+            for key, delays in query_digraph.items():
+                for delay in delays:
+
+                    if key not in claimed_gmm_params.keys():
+                        # TODO : handle this special case
+                        continue
+
+                    means, covars, weights = claimed_gmm_params[key]
+                    mean = np.asscalar(means[i])
+                    covar = np.asscalar(covars[i])
+
+                    if delay > mean - self.delta*np.sqrt(covar) and delay < mean + self.delta*np.sqrt(covar):
+                        count += 1
+
+            # TODO: this makes no sense
+            S.append(count*weights[i])
+
+        return S
 
 
 def main():
 
-    M = 2  # number of components in GMM
+    M = 1  # number of components in GMM
     delta = 0.9  # similarity metric parameter
-
     users = ["001", "002", "003", "004", "005"]
-    user_gmm_params = []
 
-    # Fit a GMM to each user's training data
-    for user in users:
+    model = GMMKeystrokeModel(users, M, delta, S_thresh=400)
 
-        user_digraphs = read_processed_data(TRAIN_DATA_PATH, user, M)
+    model.get_train_data(TRAIN_DATA_PATH)
+    model.fit()
 
-        digraph_gmms = {}
-        for digraph in user_digraphs.keys():
-
-            fitted_gmm = fit_gmm(user_digraphs[digraph], M)
-            digraph_gmms[digraph] = (fitted_gmm.means_, fitted_gmm.covariances_, fitted_gmm.weights_)
-
-        user_gmm_params.append(digraph_gmms)
+    model.get_test_data(TEST_DATA_PATH)
 
     # Predict on each users test data
-    for i, gmm_params in enumerate(user_gmm_params):
-        for user in users:
-
-            user_digraphs = read_processed_data(TEST_DATA_PATH, user)
-
-            s = compute_similarites(user_digraphs, gmm_params, M, delta)
-
-            print("Similarity of user {} and user {}: {}\t Norm: {}".format(users[i], user, s, np.linalg.norm(s)))
-
+    for S_thresh in range(200, 800, 50):
+        FAR, FRR = model.predict(S_thresh)
+        print("S_thresh = {}".format(S_thresh))
+        print("FAR: {}".format(FAR))
+        print("FRR: {}".format(FRR))
         print()
 
 
