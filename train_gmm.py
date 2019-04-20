@@ -106,6 +106,7 @@ def main():
             s = compute_similarites(user_digraphs, gmm_params, M, delta)
 
             print("Similarity of user {} and user {}: {}\t Norm: {}".format(users[i], user, s, np.linalg.norm(s)))
+
         print()
 
 

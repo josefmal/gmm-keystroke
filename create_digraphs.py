@@ -7,8 +7,14 @@ PROCESSED_DATA_PATH = "processed_data/"
 TRAIN_DATA_PATH = "processed_data/train/"
 TEST_DATA_PATH = "processed_data/test/"
 
+SPECIAL_KEYS = ["LMenu", "Tab", "Space", "Back",
+                "LShiftKey", "OemPeriod", "OemQuestion",
+                "Oemcomma", "Escape", "LControlKey",
+                "RControlKey", "Left", "Right", "Up", "Down",
+                "Delete", "Return"]
 
-def parse_raw_data(read_path, write_path, min_delay=50, max_delay=200):
+
+def parse_raw_data(read_path, write_path, min_delay=50, max_delay=200, special_keys=True):
     """
     Parses the raw data at read_path into sequences of digraphs on the form:
     [("wo", 323), ("or", 200), ("rd", 432)]
@@ -35,6 +41,11 @@ def parse_raw_data(read_path, write_path, min_delay=50, max_delay=200):
                 key, action, time = line.split()
 
                 if action != "KeyDown":
+                    continue
+
+                if not special_keys and key in SPECIAL_KEYS:
+                    prev = None
+                    new = None
                     continue
 
                 if prev is None:
@@ -73,8 +84,8 @@ def main():
     if not os.path.exists(TEST_DATA_PATH):
         os.mkdir(TEST_DATA_PATH)
 
-    parse_raw_data(RAW_TRAIN_DATA_PATH, TRAIN_DATA_PATH, min_delay=0, max_delay=1e6)
-    parse_raw_data(RAW_TEST_DATA_PATH, TEST_DATA_PATH, min_delay=0, max_delay=1e6)
+    parse_raw_data(RAW_TRAIN_DATA_PATH, TRAIN_DATA_PATH, min_delay=0, max_delay=1e6, special_keys=False)
+    parse_raw_data(RAW_TEST_DATA_PATH, TEST_DATA_PATH, min_delay=0, max_delay=1e6, special_keys=False)
 
     print("Data was preprocessed successfully.")
 
