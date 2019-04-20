@@ -1,10 +1,12 @@
 import os
 
-RAW_TRAIN_DATA_PATH = "data/baseline_s0/"
-RAW_TEST_DATA_PATH = "data/baseline_s1/"
+RAW_TRAIN_DATA_PATH = "data/s0_baseline_free/"
+RAW_VALID_DATA_PATH = "data/s1_baseline_free/"
+RAW_TEST_DATA_PATH = "data/s2_baseline_free/"
 
 PROCESSED_DATA_PATH = "processed_data/"
 TRAIN_DATA_PATH = "processed_data/train/"
+VALID_DATA_PATH = "processed_data/valid/"
 TEST_DATA_PATH = "processed_data/test/"
 
 SPECIAL_KEYS = ["LMenu", "Tab", "Space", "Back",
@@ -14,7 +16,7 @@ SPECIAL_KEYS = ["LMenu", "Tab", "Space", "Back",
                 "Delete", "Return"]
 
 
-def parse_raw_data(read_path, write_path, min_delay=50, max_delay=200, special_keys=True):
+def parse_raw_data(read_path, write_path, min_delay=10, max_delay=500, session_fraction=1, special_keys=True):
     """
     Parses the raw data at read_path into sequences of digraphs on the form:
     [("wo", 323), ("or", 200), ("rd", 432)]
@@ -32,11 +34,16 @@ def parse_raw_data(read_path, write_path, min_delay=50, max_delay=200, special_k
         users_digraphs = []
 
         file_name = read_path + file_name
+        n_lines = len(open(file_name).readlines())
+
         with open(file_name, "r") as file:
 
             prev = None  # (key, time)
             new = None  # (key, time)
-            for line in file:
+            for i, line in enumerate(file):
+
+                if i >= n_lines*session_fraction:
+                    break
 
                 key, action, time = line.split()
 
@@ -83,9 +90,12 @@ def main():
         os.mkdir(TRAIN_DATA_PATH)
     if not os.path.exists(TEST_DATA_PATH):
         os.mkdir(TEST_DATA_PATH)
+    if not os.path.exists(VALID_DATA_PATH):
+        os.mkdir(VALID_DATA_PATH)
 
-    parse_raw_data(RAW_TRAIN_DATA_PATH, TRAIN_DATA_PATH, min_delay=0, max_delay=1e6, special_keys=False)
-    parse_raw_data(RAW_TEST_DATA_PATH, TEST_DATA_PATH, min_delay=0, max_delay=1e6, special_keys=False)
+    parse_raw_data(RAW_TRAIN_DATA_PATH, TRAIN_DATA_PATH, min_delay=0, max_delay=1e6, session_fraction=1, special_keys=False)
+    parse_raw_data(RAW_VALID_DATA_PATH, VALID_DATA_PATH, min_delay=0, max_delay=1e6, session_fraction=1, special_keys=False)
+    parse_raw_data(RAW_TEST_DATA_PATH, TEST_DATA_PATH, min_delay=0, max_delay=1e6, session_fraction=1, special_keys=False)
 
     print("Data was preprocessed successfully.")
 

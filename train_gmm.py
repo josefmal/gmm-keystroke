@@ -1,8 +1,11 @@
 import numpy as np
 import sklearn.mixture
+import os
+import random
 
 PROCESSED_DATA_PATH = "processed_data/"
 TRAIN_DATA_PATH = "processed_data/train/"
+VALID_DATA_PATH = "processed_data/valid/"
 TEST_DATA_PATH = "processed_data/test/"
 
 
@@ -86,7 +89,14 @@ class GMMKeystrokeModel(object):
             S_thresh = self.S_thresh
 
         for query_user_id in self.users:
-            for claimed_user_id in self.users:
+
+            claimed_user_id2 = query_user_id
+            while query_user_id == claimed_user_id2:
+                claimed_user_id2 = random.choice(self.users)
+
+            claimed_user_ids = [query_user_id, claimed_user_id2]
+
+            for claimed_user_id in claimed_user_ids:
 
                 S = self.__compute_similarites(query_user_id, claimed_user_id)
 
@@ -157,23 +167,28 @@ class GMMKeystrokeModel(object):
         claimed_gmm_params = self.all_users_digraphs_gmms[claimed_ind]
 
         for i in range(self.M):
+            total_count = 0
             count = 0
             for key, delays in query_digraph.items():
+
+                if key not in claimed_gmm_params.keys():
+                    # TODO : handle this special case
+                    continue
+
+                means, covars, weights = claimed_gmm_params[key]
+                mean = np.asscalar(means[i])
+                covar = np.asscalar(covars[i])
+
                 for delay in delays:
-
-                    if key not in claimed_gmm_params.keys():
-                        # TODO : handle this special case
-                        continue
-
-                    means, covars, weights = claimed_gmm_params[key]
-                    mean = np.asscalar(means[i])
-                    covar = np.asscalar(covars[i])
 
                     if delay > mean - self.delta*np.sqrt(covar) and delay < mean + self.delta*np.sqrt(covar):
                         count += 1
 
+                    total_count += 1
+
             # TODO: this makes no sense
-            S.append(count*weights[i])
+            # S.append(count*weights[i]/float(total_count))
+            S.append(count/float(total_count))
 
         return S
 
@@ -181,23 +196,38 @@ class GMMKeystrokeModel(object):
 def main():
 
     M = 1  # number of components in GMM
-    delta = 0.9  # similarity metric parameter
-    users = ["001", "002", "003", "004", "005"]
+    delta = 1  # similarity metric parameter
 
-    model = GMMKeystrokeModel(users, M, delta, S_thresh=400)
+    users = os.listdir(TRAIN_DATA_PATH)
+    users = list(map(lambda x: x[:3], users))
+    # users = ["001", "002", "003", "004", "005"]
 
+    model = GMMKeystrokeModel(users, M, delta, S_thresh=0.68)
+
+    print("Loading training data...")
     model.get_train_data(TRAIN_DATA_PATH)
+
+    print("Fitting GMMs...")
     model.fit()
 
-    model.get_test_data(TEST_DATA_PATH)
+    print("Loading validation data...")
+    model.get_test_data(VALID_DATA_PATH)
 
+    print("Predicting on validation data...")
+    FAR, FRR = model.predict()
+    print("FAR: {}".format(FAR))
+    print("FRR: {}".format(FRR))
+    print()
+
+    """
     # Predict on each users test data
-    for S_thresh in range(200, 800, 50):
+    for S_thresh in np.arange(0.1, 1, 0.05):
         FAR, FRR = model.predict(S_thresh)
         print("S_thresh = {}".format(S_thresh))
         print("FAR: {}".format(FAR))
         print("FRR: {}".format(FRR))
         print()
+    """
 
 
 if __name__ == "__main__":
