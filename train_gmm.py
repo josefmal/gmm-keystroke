@@ -81,7 +81,7 @@ class GMMKeystrokeModel(object):
         Returns the FAR and FRR.
 
         """
-        tot_tests = 0
+        n_imposters = len(self.users)*(len(self.users) - 1)
         FA_errors = 0
         FR_errors = 0
 
@@ -90,29 +90,21 @@ class GMMKeystrokeModel(object):
 
         for query_user_id in self.users:
 
-            claimed_user_id2 = query_user_id
-            while query_user_id == claimed_user_id2:
-                claimed_user_id2 = random.choice(self.users)
+            for claimed_user_id in self.users:
 
-            claimed_user_ids = [query_user_id, claimed_user_id2]
+                S = self.__compute_similarity(query_user_id, claimed_user_id)
 
-            for claimed_user_id in claimed_user_ids:
+                if query_user_id != claimed_user_id:
 
-                S = self.__compute_similarites(query_user_id, claimed_user_id)
+                    if S >= S_thresh:
+                        FA_errors += 1
+                else:
 
-                for j in range(len(S)):
+                    if S < S_thresh:
+                        FR_errors += 1
 
-                    if S[j] >= S_thresh:
-                        if query_user_id != claimed_user_id:
-                            FA_errors += 1
-                    else:
-                        if query_user_id == claimed_user_id:
-                            FR_errors += 1
-
-                tot_tests += 1
-
-        FAR = float(FA_errors)/tot_tests
-        FRR = float(FR_errors)/tot_tests
+        FAR = float(FA_errors)/n_imposters
+        FRR = float(FR_errors)/len(self.users)
 
         return FAR, FRR
 
@@ -150,7 +142,7 @@ class GMMKeystrokeModel(object):
 
         return digraph_dict
 
-    def __compute_similarites(self, query_user_id, claimed_user_id):
+    def __compute_similarity(self, query_user_id, claimed_user_id):
         """
         Computes similarity between query_user and claimed_user
         using the "Digraph similarity algorithm" (Alg. 1 in paper).
@@ -158,7 +150,7 @@ class GMMKeystrokeModel(object):
         Returns list of similarities.
         """
 
-        S = []
+        S = 0
 
         query_ind = self.users.index(query_user_id)
         query_digraph = self.all_users_digraphs_test[query_ind]
@@ -182,27 +174,27 @@ class GMMKeystrokeModel(object):
                 for delay in delays:
 
                     if delay > mean - self.delta*np.sqrt(covar) and delay < mean + self.delta*np.sqrt(covar):
-                        count += 1
+                        count += weights[i]
 
                     total_count += 1
 
             # TODO: this makes no sense
             # S.append(count*weights[i]/float(total_count))
-            S.append(count/float(total_count))
+            S += count/float(total_count)
 
         return S
 
 
 def main():
 
-    M = 1  # number of components in GMM
+    M = 2  # number of components in GMM
     delta = 1  # similarity metric parameter
 
     users = os.listdir(TRAIN_DATA_PATH)
     users = list(map(lambda x: x[:3], users))
     # users = ["001", "002", "003", "004", "005"]
 
-    model = GMMKeystrokeModel(users, M, delta, S_thresh=0.68)
+    model = GMMKeystrokeModel(users, M, delta, S_thresh=0.36)
 
     print("Loading training data...")
     model.get_train_data(TRAIN_DATA_PATH)
