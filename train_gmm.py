@@ -1,7 +1,6 @@
 import numpy as np
 import sklearn.mixture
 import os
-import random
 
 PROCESSED_DATA_PATH = "processed_data/"
 TRAIN_DATA_PATH = "processed_data/train/"
@@ -94,6 +93,11 @@ class GMMKeystrokeModel(object):
 
                 S = self.__compute_similarity(query_user_id, claimed_user_id)
 
+                if query_user_id == claimed_user_id:
+                    print("Same: {}".format(S))
+                # else:
+                #    print(S)
+
                 if query_user_id != claimed_user_id:
 
                     if S >= S_thresh:
@@ -135,7 +139,7 @@ class GMMKeystrokeModel(object):
             for key, entry in list(digraph_dict.items()):
                 if entry.shape == ():
                     del digraph_dict[key]
-                elif entry.shape[0] < self.M:
+                elif entry.shape[0] < 10:
                     del digraph_dict[key]
                 elif len(set(entry)) < self.M:
                     del digraph_dict[key]
@@ -149,8 +153,8 @@ class GMMKeystrokeModel(object):
 
         Returns list of similarities.
         """
-
-        S = 0
+        count = 0
+        total_count = 0
 
         query_ind = self.users.index(query_user_id)
         query_digraph = self.all_users_digraphs_test[query_ind]
@@ -158,43 +162,42 @@ class GMMKeystrokeModel(object):
         claimed_ind = self.users.index(claimed_user_id)
         claimed_gmm_params = self.all_users_digraphs_gmms[claimed_ind]
 
-        for i in range(self.M):
-            total_count = 0
-            count = 0
-            for key, delays in query_digraph.items():
+        for key, delays in query_digraph.items():
 
-                if key not in claimed_gmm_params.keys():
-                    # TODO : handle this special case
-                    continue
+            if key not in claimed_gmm_params.keys():
+                # TODO : handle this special case
+                continue
 
-                means, covars, weights = claimed_gmm_params[key]
-                mean = np.asscalar(means[i])
-                covar = np.asscalar(covars[i])
+            means, covars, weights = claimed_gmm_params[key]
 
-                for delay in delays:
+            for delay in delays:
 
-                    if delay > mean - self.delta*np.sqrt(covar) and delay < mean + self.delta*np.sqrt(covar):
-                        count += weights[i]
+                total_count += 1
 
-                    total_count += 1
+                for i in range(self.M):
 
-            # TODO: this makes no sense
-            # S.append(count*weights[i]/float(total_count))
-            S += count/float(total_count)
+                    mean = np.asscalar(means[i])
+                    covar = np.asscalar(covars[i])
+
+                    if delay >= mean - self.delta*np.sqrt(covar) and delay <= mean + self.delta*np.sqrt(covar):
+                        count += 1
+                        break
+
+        S = count/float(total_count)
 
         return S
 
 
 def main():
 
-    M = 2  # number of components in GMM
+    M = 3  # number of components in GMM
     delta = 1  # similarity metric parameter
 
     users = os.listdir(TRAIN_DATA_PATH)
     users = list(map(lambda x: x[:3], users))
     # users = ["001", "002", "003", "004", "005"]
 
-    model = GMMKeystrokeModel(users, M, delta, S_thresh=0.36)
+    model = GMMKeystrokeModel(users, M, delta, S_thresh=0.54)
 
     print("Loading training data...")
     model.get_train_data(TRAIN_DATA_PATH)
@@ -203,7 +206,7 @@ def main():
     model.fit()
 
     print("Loading validation data...")
-    model.get_test_data(VALID_DATA_PATH)
+    model.get_test_data(TEST_DATA_PATH)
 
     print("Predicting on validation data...")
     FAR, FRR = model.predict()
