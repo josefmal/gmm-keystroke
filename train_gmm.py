@@ -69,7 +69,7 @@ class GMMKeystrokeModel(object):
                 gmm = sklearn.mixture.GaussianMixture(n_components=self.M)
                 gmm.fit(delays.reshape(-1, 1))
 
-                self.all_users_digraphs_gmms[i][digraph] = (gmm.means_, gmm.covariances_, gmm.weights_)
+                self.all_users_digraphs_gmms[i][digraph] = gmm
 
     def predict(self, S_thresh=None):
 
@@ -95,8 +95,8 @@ class GMMKeystrokeModel(object):
 
                 if query_user_id == claimed_user_id:
                     print("Same: {}".format(S))
-                else:
-                    print(S)
+                # else:
+                #    print(S)
 
                 if query_user_id != claimed_user_id:
 
@@ -153,37 +153,23 @@ class GMMKeystrokeModel(object):
 
         Returns list of similarities.
         """
-        count = 0
-        total_count = 0
+        S = 0
 
         query_ind = self.users.index(query_user_id)
         query_digraph = self.all_users_digraphs_test[query_ind]
 
         claimed_ind = self.users.index(claimed_user_id)
-        claimed_gmm_params = self.all_users_digraphs_gmms[claimed_ind]
+        claimed_gmms = self.all_users_digraphs_gmms[claimed_ind]
 
         for key, delays in query_digraph.items():
 
-            if key not in claimed_gmm_params.keys():
+            if key not in claimed_gmms.keys():
                 # TODO : handle this special case
                 continue
 
-            means, covars, weights = claimed_gmm_params[key]
-
-            for delay in delays:
-
-                total_count += 1
-
-                for i in range(self.M):
-
-                    mean = np.asscalar(means[i])
-                    covar = np.asscalar(covars[i])
-                    weight = np.asscalar(weights[i])
-
-                    if delay >= mean - self.delta*np.sqrt(covar) and delay <= mean + self.delta*np.sqrt(covar):
-                        count += weight
-
-        S = count/float(total_count)
+            gmm = claimed_gmms[key]
+            log_likes = gmm.score_samples(np.asarray(delays).reshape(-1, 1))
+            S += sum(log_likes)
 
         return S
 
@@ -197,7 +183,7 @@ def main():
     users = list(map(lambda x: x[:3], users))
     # users = ["001", "002", "003", "004", "005"]
 
-    model = GMMKeystrokeModel(users, M, delta, S_thresh=0.32)
+    model = GMMKeystrokeModel(users, M, delta, S_thresh=-15000)
 
     print("Loading training data...")
     model.get_train_data(TRAIN_DATA_PATH)
