@@ -95,8 +95,8 @@ class GMMKeystrokeModel(object):
 
                 if query_user_id == claimed_user_id:
                     print("Same: {}".format(S))
-                # else:
-                #    print(S)
+                else:
+                    print(S)
 
                 if query_user_id != claimed_user_id:
 
@@ -178,10 +178,10 @@ class GMMKeystrokeModel(object):
 
                     mean = np.asscalar(means[i])
                     covar = np.asscalar(covars[i])
+                    weight = np.asscalar(weights[i])
 
                     if delay >= mean - self.delta*np.sqrt(covar) and delay <= mean + self.delta*np.sqrt(covar):
-                        count += 1
-                        break
+                        count += weight
 
         S = count/float(total_count)
 
@@ -197,7 +197,7 @@ def main():
     users = list(map(lambda x: x[:3], users))
     # users = ["001", "002", "003", "004", "005"]
 
-    model = GMMKeystrokeModel(users, M, delta, S_thresh=0.54)
+    model = GMMKeystrokeModel(users, M, delta, S_thresh=0.32)
 
     print("Loading training data...")
     model.get_train_data(TRAIN_DATA_PATH)
@@ -206,7 +206,7 @@ def main():
     model.fit()
 
     print("Loading validation data...")
-    model.get_test_data(TEST_DATA_PATH)
+    model.get_test_data(VALID_DATA_PATH)
 
     print("Predicting on validation data...")
     FAR, FRR = model.predict()
